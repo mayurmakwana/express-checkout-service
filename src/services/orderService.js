@@ -1,7 +1,7 @@
 const orderRepository = require('../repositories/orderRepository');
 const config = require('../config');
 
-const VALID_STATUSES = ['PENDING', 'PAID', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED'];
+const VALID_STATUSES = ['PENDING', 'PAID', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED'];
 
 class OrderService {
   /**
@@ -129,14 +129,66 @@ class OrderService {
 
     const order = await this.getOrderById(id);
 
-    // Business rule: Cannot change status of cancelled order
-    if (order.status === 'CANCELLED') {
-      const error = new Error('Cannot update status of a cancelled order');
+    // Business rule: Cannot change status of cancelled or refunded order
+    if (order.status === 'CANCELLED' || order.status === 'REFUNDED') {
+      const error = new Error(`Cannot update status of an order that is ${order.status.toLowerCase()}`);
       error.statusCode = 409;
       throw error;
     }
 
     return await orderRepository.update(id, { status: newStatus });
+  }
+
+  /**
+   * Cancel and optionally refund an order
+   */
+  async cancelOrder(id, options = {}) {
+    const order = await this.getOrderById(id);
+
+    if (order.status === 'CANCELLED' || order.status === 'REFUNDED') {
+      const error = new Error(`Order ${id} is already ${order.status.toLowerCase()}`);
+      error.statusCode = 409;
+      throw error;
+    }
+
+    if (['SHIPPED', 'DELIVERED'].includes(order.status)) {
+      const error = new Error(`Cannot cancel order in ${order.status} state. Returns must be initiated instead.`);
+      error.statusCode = 409;
+      throw error;
+    }
+
+    let refundAmount = 0;
+    let targetStatus = 'CANCELLED';
+
+    if (['PAID', 'PROCESSING'].includes(order.status)) {
+      targetStatus = 'REFUNDED';
+      if (options.refundAmount !== undefined) {
+        if (
+          typeof options.refundAmount !== 'number' ||
+          !Number.isFinite(options.refundAmount) ||
+          options.refundAmount <= 0 ||
+          options.refundAmount > order.total
+        ) {
+          const error = new Error(`refundAmount must be a positive number less than or equal to total (${order.total})`);
+          error.statusCode = 400;
+          throw error;
+        }
+        refundAmount = options.refundAmount;
+      } else {
+        refundAmount = order.total;
+      }
+    }
+
+    const cancellation = {
+      reason: options.reason || 'Customer requested cancellation',
+      refundAmount: Math.round(refundAmount * 100) / 100,
+      cancelledAt: new Date().toISOString()
+    };
+
+    return await orderRepository.update(id, {
+      status: targetStatus,
+      cancellation
+    });
   }
 }
 

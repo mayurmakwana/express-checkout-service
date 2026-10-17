@@ -91,4 +91,82 @@ describe('Orders API Integration Tests', () => {
       expect(res.body.data.status).toBe('SHIPPED');
     });
   });
+
+  describe('POST /api/orders/:id/cancel', () => {
+    it('should successfully cancel a PENDING order with 200', async () => {
+      const created = await request(app)
+        .post('/api/orders')
+        .send({
+          customerId: 'cust_cancel',
+          items: [{ name: 'Desk Pad', price: 20.0, quantity: 1 }]
+        });
+
+      const orderId = created.body.data.id;
+
+      const res = await request(app)
+        .post(`/api/orders/${orderId}/cancel`)
+        .send({ reason: 'Accidental order' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.status).toBe('CANCELLED');
+      expect(res.body.data.cancellation.refundAmount).toBe(0);
+      expect(res.body.data.cancellation.reason).toBe('Accidental order');
+    });
+
+    it('should successfully refund a PAID order with 200', async () => {
+      const created = await request(app)
+        .post('/api/orders')
+        .send({
+          customerId: 'cust_refund',
+          items: [{ name: 'Webcam', price: 80.0, quantity: 1 }]
+        });
+
+      const orderId = created.body.data.id;
+      await request(app).patch(`/api/orders/${orderId}/status`).send({ status: 'PAID' });
+
+      const res = await request(app)
+        .post(`/api/orders/${orderId}/cancel`)
+        .send({ reason: 'Defective item', refundAmount: 80.0 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.status).toBe('REFUNDED');
+      expect(res.body.data.cancellation.refundAmount).toBe(80.0);
+    });
+
+    it('should return 409 when attempting to cancel an already cancelled order', async () => {
+      const created = await request(app)
+        .post('/api/orders')
+        .send({
+          customerId: 'cust_double',
+          items: [{ name: 'Item', price: 15.0, quantity: 1 }]
+        });
+
+      const orderId = created.body.data.id;
+      await request(app).post(`/api/orders/${orderId}/cancel`);
+
+      const res = await request(app).post(`/api/orders/${orderId}/cancel`);
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toContain('already cancelled');
+    });
+
+    it('should return 400 for invalid refund amount', async () => {
+      const created = await request(app)
+        .post('/api/orders')
+        .send({
+          customerId: 'cust_inv_refund',
+          items: [{ name: 'Item', price: 15.0, quantity: 1 }]
+        });
+
+      const orderId = created.body.data.id;
+      await request(app).patch(`/api/orders/${orderId}/status`).send({ status: 'PAID' });
+
+      const res = await request(app)
+        .post(`/api/orders/${orderId}/cancel`)
+        .send({ refundAmount: -10 });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.message).toContain('refundAmount must be a positive number');
+    });
+  });
 });

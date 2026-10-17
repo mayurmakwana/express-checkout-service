@@ -146,7 +146,7 @@ describe('OrderService Unit Tests', () => {
       expect(updated.status).toBe('PROCESSING');
     });
 
-    it('should prevent updating a CANCELLED order', async () => {
+    it('should prevent updating a CANCELLED or REFUNDED order', async () => {
       const order = await orderService.createOrder({
         customerId: 'cust_123',
         items: [{ id: 'p1', name: 'Item', price: 25.0, quantity: 1 }]
@@ -156,7 +156,83 @@ describe('OrderService Unit Tests', () => {
 
       await expect(
         orderService.updateStatus(order.id, 'PAID')
-      ).rejects.toThrow('Cannot update status of a cancelled order');
+      ).rejects.toThrow('Cannot update status of an order that is cancelled');
+    });
+  });
+
+  describe('cancelOrder', () => {
+    it('should cancel a PENDING order with zero refund', async () => {
+      const order = await orderService.createOrder({
+        customerId: 'cust_123',
+        items: [{ id: 'p1', name: 'Item', price: 25.0, quantity: 1 }]
+      });
+
+      const cancelled = await orderService.cancelOrder(order.id, { reason: 'User mind change' });
+      expect(cancelled.status).toBe('CANCELLED');
+      expect(cancelled.cancellation.refundAmount).toBe(0);
+      expect(cancelled.cancellation.reason).toBe('User mind change');
+      expect(cancelled.cancellation.cancelledAt).toBeDefined();
+    });
+
+    it('should refund a PAID order with full total by default', async () => {
+      const order = await orderService.createOrder({
+        customerId: 'cust_123',
+        items: [{ id: 'p1', name: 'Item', price: 25.0, quantity: 1 }]
+      });
+      await orderService.updateStatus(order.id, 'PAID');
+
+      const refunded = await orderService.cancelOrder(order.id, { reason: 'Out of stock' });
+      expect(refunded.status).toBe('REFUNDED');
+      expect(refunded.cancellation.refundAmount).toBe(order.total);
+      expect(refunded.cancellation.reason).toBe('Out of stock');
+    });
+
+    it('should allow partial refund amount for PAID order', async () => {
+      const order = await orderService.createOrder({
+        customerId: 'cust_123',
+        items: [{ id: 'p1', name: 'Item', price: 50.0, quantity: 2 }]
+      });
+      await orderService.updateStatus(order.id, 'PAID');
+
+      const refunded = await orderService.cancelOrder(order.id, { refundAmount: 20.0 });
+      expect(refunded.status).toBe('REFUNDED');
+      expect(refunded.cancellation.refundAmount).toBe(20.0);
+    });
+
+    it('should reject refundAmount greater than order total', async () => {
+      const order = await orderService.createOrder({
+        customerId: 'cust_123',
+        items: [{ id: 'p1', name: 'Item', price: 25.0, quantity: 1 }]
+      });
+      await orderService.updateStatus(order.id, 'PAID');
+
+      await expect(
+        orderService.cancelOrder(order.id, { refundAmount: 999.99 })
+      ).rejects.toThrow('refundAmount must be a positive number less than or equal to total');
+    });
+
+    it('should reject cancelling SHIPPED or DELIVERED orders', async () => {
+      const order = await orderService.createOrder({
+        customerId: 'cust_123',
+        items: [{ id: 'p1', name: 'Item', price: 25.0, quantity: 1 }]
+      });
+      await orderService.updateStatus(order.id, 'SHIPPED');
+
+      await expect(
+        orderService.cancelOrder(order.id)
+      ).rejects.toThrow('Cannot cancel order in SHIPPED state');
+    });
+
+    it('should reject cancelling already cancelled or refunded orders', async () => {
+      const order = await orderService.createOrder({
+        customerId: 'cust_123',
+        items: [{ id: 'p1', name: 'Item', price: 25.0, quantity: 1 }]
+      });
+      await orderService.cancelOrder(order.id);
+
+      await expect(
+        orderService.cancelOrder(order.id)
+      ).rejects.toThrow('is already cancelled');
     });
   });
 });
