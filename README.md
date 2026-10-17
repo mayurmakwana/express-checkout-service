@@ -50,6 +50,7 @@ The project follows clean, layered architecture principles:
 - `GET /api/orders` — List orders (supports `?status=` and `?customerId=` filters).
 - `GET /api/orders/:id` — Retrieve an order by ID.
 - `PATCH /api/orders/:id/status` — Update order status.
+- `POST /api/orders/:id/cancel` — Cancel an order with automated refund processing based on order lifecycle status.
 
 ### Webhooks API
 - `POST /api/webhooks` — Ingest payment gateway events (requires `x-signature` header).

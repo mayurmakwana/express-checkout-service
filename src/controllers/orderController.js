@@ -51,6 +51,19 @@ class OrderController {
       next(err);
     }
   }
+
+  async cancel(req, res, next) {
+    try {
+      const { reason, refundAmount } = req.body || {};
+      const cancelled = await orderService.cancelOrder(req.params.id, { reason, refundAmount });
+      res.status(200).json({
+        success: true,
+        data: cancelled
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 module.exports = new OrderController();
