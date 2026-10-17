@@ -1,6 +1,6 @@
 # Express Checkout Service
 
-[![CI](https://github.com/mayurm/express-checkout-service/actions/workflows/ci.yml/badge.svg)](https://github.com/mayurm/express-checkout-service/actions/workflows/ci.yml)
+[![CI](https://github.com/mayurmakwana/express-checkout-service/actions/workflows/ci.yml/badge.svg)](https://github.com/mayurmakwana/express-checkout-service/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
 
@@ -64,7 +64,7 @@ The project follows clean, layered architecture principles:
 
 ### Installation
 ```bash
-git clone https://github.com/mayurm/express-checkout-service.git
+git clone https://github.com/mayurmakwana/express-checkout-service.git
 cd express-checkout-service
 npm install
 ```
