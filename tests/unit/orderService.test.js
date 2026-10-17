@@ -43,6 +43,27 @@ describe('OrderService Unit Tests', () => {
       expect(totals.taxAmount).toBe(7.2); // (100 - 10) * 0.08 = 7.20
       expect(totals.total).toBe(97.2); // 90 + 7.20 + 0 shipping
     });
+
+    it('should maintain exact reconciliation where total equals subtotal - discount + tax + shipping without float rounding discrepancies', () => {
+      // Subtotal = 10.05, discountRate = 0.15 (15%), taxRate = 0.0825 (8.25%)
+      const items = [
+        { id: 'item_edge', name: 'Precision Widget', price: 10.05, quantity: 1 }
+      ];
+      const totals = orderService.calculateTotals(items, { discountRate: 0.15, taxRate: 0.0825 });
+
+      // In pure floats:
+      // discountAmount = 10.05 * 0.15 = 1.5075 -> rounded 1.51
+      // taxableAmount = 10.05 - 1.51 = 8.54
+      // taxAmount = 8.54 * 0.0825 = 0.70455 -> rounded 0.70
+      // shipping = 10.00
+      // expected total = 8.54 + 0.70 + 10.00 = 19.24
+      const calculatedComponentSum = Number(
+        (totals.subtotal - totals.discountAmount + totals.taxAmount + totals.shipping).toFixed(2)
+      );
+
+      expect(totals.total).toBe(calculatedComponentSum);
+      expect(totals.total).toBe(19.24);
+    });
   });
 
   describe('createOrder', () => {
@@ -83,6 +104,34 @@ describe('OrderService Unit Tests', () => {
           items: [{ name: 'Invalid', price: -10, quantity: 1 }]
         })
       ).rejects.toThrow('Item price and quantity must be greater than zero');
+    });
+
+    it('should reject creation when discountRate is negative or exceeds 1.0', async () => {
+      await expect(
+        orderService.createOrder({
+          customerId: 'cust_123',
+          items: [{ name: 'Item', price: 10, quantity: 1 }],
+          discountRate: -0.1
+        })
+      ).rejects.toThrow('discountRate must be a number between 0 and 1');
+
+      await expect(
+        orderService.createOrder({
+          customerId: 'cust_123',
+          items: [{ name: 'Item', price: 10, quantity: 1 }],
+          discountRate: 1.2
+        })
+      ).rejects.toThrow('discountRate must be a number between 0 and 1');
+    });
+
+    it('should reject creation when taxRate is negative', async () => {
+      await expect(
+        orderService.createOrder({
+          customerId: 'cust_123',
+          items: [{ name: 'Item', price: 10, quantity: 1 }],
+          taxRate: -0.05
+        })
+      ).rejects.toThrow('taxRate must be a non-negative number');
     });
   });
 

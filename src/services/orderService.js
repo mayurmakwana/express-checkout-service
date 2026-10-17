@@ -11,24 +11,25 @@ class OrderService {
     const discountRate = options.discountRate || 0;
     const taxRate = options.taxRate !== undefined ? options.taxRate : config.taxRateDefault;
 
-    let subtotal = 0;
+    // Use cent-based integer calculations to eliminate IEEE-754 floating-point drift
+    let subtotalCents = 0;
     for (const item of items) {
-      subtotal += item.price * item.quantity;
+      const itemPriceCents = Math.round(item.price * 100);
+      subtotalCents += itemPriceCents * item.quantity;
     }
 
-    // Baseline calculation: basic arithmetic
-    const discountAmount = subtotal * discountRate;
-    const taxableAmount = subtotal - discountAmount;
-    const taxAmount = taxableAmount * taxRate;
-    const shipping = subtotal >= 100 || subtotal === 0 ? 0 : 10.0;
-    const total = taxableAmount + taxAmount + shipping;
+    const discountCents = Math.round(subtotalCents * discountRate);
+    const taxableCents = Math.max(0, subtotalCents - discountCents);
+    const taxCents = Math.round(taxableCents * taxRate);
+    const shippingCents = subtotalCents >= 10000 || subtotalCents === 0 ? 0 : 1000;
+    const totalCents = taxableCents + taxCents + shippingCents;
 
     return {
-      subtotal: Number(subtotal.toFixed(2)),
-      discountAmount: Number(discountAmount.toFixed(2)),
-      taxAmount: Number(taxAmount.toFixed(2)),
-      shipping: Number(shipping.toFixed(2)),
-      total: Number(total.toFixed(2))
+      subtotal: subtotalCents / 100,
+      discountAmount: discountCents / 100,
+      taxAmount: taxCents / 100,
+      shipping: shippingCents / 100,
+      total: totalCents / 100
     };
   }
 
@@ -48,13 +49,29 @@ class OrderService {
       throw error;
     }
 
+    if (data.discountRate !== undefined) {
+      if (typeof data.discountRate !== 'number' || Number.isNaN(data.discountRate) || data.discountRate < 0 || data.discountRate > 1) {
+        const error = new Error('discountRate must be a number between 0 and 1');
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+
+    if (data.taxRate !== undefined) {
+      if (typeof data.taxRate !== 'number' || Number.isNaN(data.taxRate) || data.taxRate < 0) {
+        const error = new Error('taxRate must be a non-negative number');
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+
     for (const item of data.items) {
       if (!item.name || typeof item.price !== 'number' || typeof item.quantity !== 'number') {
         const error = new Error('Each item must have name, numeric price, and numeric quantity');
         error.statusCode = 400;
         throw error;
       }
-      if (item.price <= 0 || item.quantity <= 0) {
+      if (item.price <= 0 || item.quantity <= 0 || !Number.isFinite(item.price) || !Number.isFinite(item.quantity)) {
         const error = new Error('Item price and quantity must be greater than zero');
         error.statusCode = 400;
         throw error;
