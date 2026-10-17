@@ -64,6 +64,29 @@ describe('OrderService Unit Tests', () => {
       expect(totals.total).toBe(calculatedComponentSum);
       expect(totals.total).toBe(19.24);
     });
+
+    it('should correctly preserve sub-cent fractional unit prices across large quantities', () => {
+      // 1,000 units at $0.004 each = $4.00, subtotal < 100 so shipping = 10, tax = 4 * 0.08 = 0.32
+      const items = [
+        { id: 'item_micro', name: 'API Request Token', price: 0.004, quantity: 1000 }
+      ];
+      const totals = orderService.calculateTotals(items);
+
+      expect(totals.subtotal).toBe(4.0);
+      expect(totals.taxAmount).toBe(0.32);
+      expect(totals.shipping).toBe(10.0);
+      expect(totals.total).toBe(14.32);
+    });
+
+    it('should reject calculation when subtotal exceeds safe integer limits', () => {
+      const items = [
+        { id: 'item_overflow', name: 'Cosmic Item', price: 1e16, quantity: 1 }
+      ];
+
+      expect(() => {
+        orderService.calculateTotals(items);
+      }).toThrow('Order subtotal exceeds safe integer calculation limits');
+    });
   });
 
   describe('createOrder', () => {
@@ -104,6 +127,22 @@ describe('OrderService Unit Tests', () => {
           items: [{ name: 'Invalid', price: -10, quantity: 1 }]
         })
       ).rejects.toThrow('Item price and quantity must be greater than zero');
+    });
+
+    it('should reject creation when item price or quantity exceeds upper sanity caps', async () => {
+      await expect(
+        orderService.createOrder({
+          customerId: 'cust_123',
+          items: [{ name: 'Overpriced', price: 2000000, quantity: 1 }]
+        })
+      ).rejects.toThrow('Item price cannot exceed $1000000');
+
+      await expect(
+        orderService.createOrder({
+          customerId: 'cust_123',
+          items: [{ name: 'Overquantity', price: 10, quantity: 200000 }]
+        })
+      ).rejects.toThrow('quantity cannot exceed 100000');
     });
 
     it('should reject creation when discountRate is negative or exceeds 1.0', async () => {

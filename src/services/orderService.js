@@ -11,11 +11,17 @@ class OrderService {
     const discountRate = options.discountRate || 0;
     const taxRate = options.taxRate !== undefined ? options.taxRate : config.taxRateDefault;
 
-    // Use cent-based integer calculations to eliminate IEEE-754 floating-point drift
+    // Use line-item rounded cent calculations to support fractional/sub-cent unit pricing
     let subtotalCents = 0;
     for (const item of items) {
-      const itemPriceCents = Math.round(item.price * 100);
-      subtotalCents += itemPriceCents * item.quantity;
+      const lineItemCents = Math.round(item.price * item.quantity * 100);
+      subtotalCents += lineItemCents;
+    }
+
+    if (!Number.isSafeInteger(subtotalCents)) {
+      const error = new Error('Order subtotal exceeds safe integer calculation limits');
+      error.statusCode = 400;
+      throw error;
     }
 
     const discountCents = Math.round(subtotalCents * discountRate);
@@ -37,6 +43,9 @@ class OrderService {
    * Create a new order
    */
   async createOrder(data) {
+    const MAX_PRICE = 1000000; // $1,000,000 maximum per item
+    const MAX_QUANTITY = 100000; // 100,000 units max per line item
+
     if (!data.customerId || typeof data.customerId !== 'string') {
       const error = new Error('customerId is required and must be a string');
       error.statusCode = 400;
@@ -71,8 +80,18 @@ class OrderService {
         error.statusCode = 400;
         throw error;
       }
-      if (item.price <= 0 || item.quantity <= 0 || !Number.isFinite(item.price) || !Number.isFinite(item.quantity)) {
+      if (
+        item.price <= 0 ||
+        item.quantity <= 0 ||
+        !Number.isFinite(item.price) ||
+        !Number.isFinite(item.quantity)
+      ) {
         const error = new Error('Item price and quantity must be greater than zero');
+        error.statusCode = 400;
+        throw error;
+      }
+      if (item.price > MAX_PRICE || item.quantity > MAX_QUANTITY) {
+        const error = new Error(`Item price cannot exceed $${MAX_PRICE} and quantity cannot exceed ${MAX_QUANTITY}`);
         error.statusCode = 400;
         throw error;
       }

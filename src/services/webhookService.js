@@ -7,15 +7,27 @@ class WebhookService {
    * Verify HMAC signature for incoming webhook
    */
   verifySignature(rawPayload, signature) {
-    if (!signature || !rawPayload) {
+    if (!signature || !rawPayload || typeof signature !== 'string') {
       return false;
     }
 
-    const hmac = crypto.createHmac('sha256', config.webhookSecret);
-    const expectedSignature = hmac.update(rawPayload).digest('hex');
+    try {
+      const hmac = crypto.createHmac('sha256', config.webhookSecret);
+      const expectedSignature = hmac.update(rawPayload).digest('hex');
 
-    // Baseline implementation: standard string comparison (vulnerable to timing attack)
-    return signature === expectedSignature;
+      const sigBuffer = Buffer.from(signature, 'utf8');
+      const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
+
+      // Prevent length-leak timing attacks by executing constant-time comparison
+      if (sigBuffer.length !== expectedBuffer.length) {
+        crypto.timingSafeEqual(expectedBuffer, expectedBuffer);
+        return false;
+      }
+
+      return crypto.timingSafeEqual(sigBuffer, expectedBuffer);
+    } catch {
+      return false;
+    }
   }
 
   /**

@@ -61,6 +61,8 @@ describe('Webhook API Integration Tests', () => {
         .send(payload);
 
       expect(res.status).toBe(200);
+      expect(res.headers['x-ratelimit-limit']).toBe('30');
+      expect(res.headers['x-ratelimit-remaining']).toBeDefined();
       expect(res.body.success).toBe(true);
       expect(res.body.data.action).toBe('ORDER_MARKED_PAID');
 
